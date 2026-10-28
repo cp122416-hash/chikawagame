@@ -1,4 +1,4 @@
-// data.js — 캐릭터 정의 (1~10단계)
+// data.js — 캐릭터 정의 (1~10단계, 1단계 우사기 / 3단계 치이카와)
 //
 // imgScale  : 원 지름(2r) 대비 이미지 표시 비율 (0~1)
 // imgOffsetY: 이미지 수직 보정값 (반지름 r 기준 비율)
@@ -6,9 +6,9 @@
 // mouthPos  : 10단계 아노코 입 위치 정규화 좌표 (-1~1 기준, x: 좌우, y: 상하)
 
 const CHARACTERS = [
-  { level: 1,  name: '치이카와', radius: 18,  color: '#FFD966', image: 'assets/chiikawa.png',  soundPath: 'assets/audio/chiikawa.mp3',  imgScale: 0.82, imgOffsetY: 0 },
+  { level: 1,  name: '우사기',   radius: 18,  color: '#F4A7B9', image: 'assets/usagi.png',     soundPath: 'assets/audio/usagi.mp3',     imgScale: 0.76, imgOffsetY: 0 },
   { level: 2,  name: '하치와레', radius: 24,  color: '#8EC6E6', image: 'assets/hachiware.png', soundPath: 'assets/audio/hachiware.mp3', imgScale: 0.80, imgOffsetY: 0 },
-  { level: 3,  name: '우사기',   radius: 32,  color: '#F4A7B9', image: 'assets/usagi.png',     soundPath: 'assets/audio/usagi.mp3',     imgScale: 0.76, imgOffsetY: 0 },
+  { level: 3,  name: '치이카와', radius: 32,  color: '#FFD966', image: 'assets/chiikawa.png',  soundPath: 'assets/audio/chiikawa.mp3',  imgScale: 0.82, imgOffsetY: 0 },
   { level: 4,  name: '모몽가',   radius: 42,  color: '#A8D8A8', image: 'assets/momonga.png',   soundPath: 'assets/audio/momonga.mp3',   imgScale: 0.80, imgOffsetY: 0 },
   { level: 5,  name: '쿠리만쥬', radius: 54,  color: '#D4A5E5', image: 'assets/kurimanju.png', soundPath: 'assets/audio/kurimanju.mp3', imgScale: 0.82, imgOffsetY: 0 },
   { level: 6,  name: '시사',     radius: 68,  color: '#F4A460', image: 'assets/shisa.png',     soundPath: 'assets/audio/shisa.mp3',     imgScale: 0.76, imgOffsetY: 0 },

@@ -1,14 +1,18 @@
-// game.js — 치이카와 합치기 (1~10단계, 사운드, 아노코 먹기 연출)
+// game.js — 치이카와 합치기 (1~10단계, 맵 15% 확장, 우사기 1단계 / 치이카와 3단계)
 'use strict';
 
 (function () {
-  // ─── 상수 ────────────────────────────────────────────────
-  const W = 400, H = 640;
-  const WALL_T = 40;
-  const DROP_ZONE_H = 80;
-  const DANGER_Y = 100;
-  const DANGER_DURATION = 2000;
-  const DROP_GRACE = 1000;
+  // ─── 맵 크기 및 경계 설정 ────────────────────────────────
+  // 기존: W=400, H=640, 내부 너비=360px, 쌓기 높이(위험선~바닥)=540px
+  // 변경: W=460, H=720, 내부 너비=414px (+15.0%), 쌓기 높이=620px (+14.8%)
+  const W = 460;
+  const H = 720;
+  const WALL_PHYSICS_T = 80;    // 바디 뚫림 방지용 두꺼운 물리 벽 두께
+  const WALL_VIS_W = 23;        // 시각적 벽 두께 (좌우 각각 23px)
+  const DROP_ZONE_H = 80;       // 상단 낙하 대기 영역 높이
+  const DANGER_Y = 100;         // 위험선 Y (낙하 대기 공간은 최대 3단계 치이카와 r=32 대기 가능)
+  const DANGER_DURATION = 2000; // 게임 오버까지 연속 위험 시간 ms
+  const DROP_GRACE = 1000;      // 낙하 후 위험 판정 유예 ms
   const DROP_COOLDOWN = 500;
   const FIXED_DT = 1000 / 60;
   const MAX_DT = 200;
@@ -27,6 +31,11 @@
   const ANOC_MERGE_SCORE = 5120;
   const MAX_LEVEL = 10;
   const STORAGE_KEY = 'chiikawa_merge_highscore';
+
+  // 통일된 상자 내부 물리/표시 경계
+  const BOX_LEFT = WALL_VIS_W;        // 23
+  const BOX_RIGHT = W - WALL_VIS_W;   // 437 (내부 너비: 414px)
+  const BOX_BOTTOM = H;               // 720 (쌓기 높이: 720 - 100 = 620px)
 
   // ─── Matter.js 별칭 ───────────────────────────────────────
   const { Engine, World, Bodies, Body, Events } = Matter;
@@ -216,9 +225,6 @@
   let eatingAnimations = [];
   let floatingTexts = [];
 
-  const BOX_LEFT = WALL_T / 2;
-  const BOX_RIGHT = W - WALL_T / 2;
-
   function charData(level) {
     return CHARACTERS.find(c => c.level === level) || CHARACTERS[0];
   }
@@ -234,7 +240,7 @@
 
   function clampMergePos(x, y, radius) {
     const cx = Math.max(BOX_LEFT + radius, Math.min(BOX_RIGHT - radius, x));
-    const cy = Math.max(DROP_ZONE_H + radius, Math.min(H - WALL_T / 2 - radius, y));
+    const cy = Math.max(DROP_ZONE_H + radius, Math.min(BOX_BOTTOM - radius, y));
     return { x: cx, y: cy };
   }
 
@@ -278,7 +284,6 @@
       targetCtx.drawImage(img, -drawW / 2, -drawH / 2 + offsetY, drawW, drawH);
       targetCtx.restore();
     } else {
-      // 대체 텍스트
       targetCtx.fillStyle = '#443328';
       const fontSize = Math.max(7, Math.floor(radius * 0.42));
       targetCtx.font = `bold ${fontSize}px sans-serif`;
@@ -360,15 +365,18 @@
     });
   }
 
-  // ─── 물리 초기화 ─────────────────────────────────────────
+  // ─── 물리 초기화 (통일된 상자 내부 경계 적용) ────────────
   function initPhysics() {
     engine = Engine.create({ gravity: { x: 0, y: 1.5 } });
     world = engine.world;
 
     const opts = { isStatic: true, friction: 0.5, restitution: 0.05, label: 'wall' };
-    const floor = Bodies.rectangle(W / 2, H + WALL_T / 2, W + WALL_T * 2, WALL_T, opts);
-    const wallL = Bodies.rectangle(-WALL_T / 2, H / 2, WALL_T, H * 2, opts);
-    const wallR = Bodies.rectangle(W + WALL_T / 2, H / 2, WALL_T, H * 2, opts);
+    // 바닥: 윗면이 y = BOX_BOTTOM = H 에 정확히 위치하도록 중심 설정
+    const floor = Bodies.rectangle(W / 2, BOX_BOTTOM + WALL_PHYSICS_T / 2, W * 2, WALL_PHYSICS_T, opts);
+    // 좌측 벽: 우측면이 x = BOX_LEFT 에 정확히 위치하도록 중심 설정
+    const wallL = Bodies.rectangle(BOX_LEFT - WALL_PHYSICS_T / 2, H / 2, WALL_PHYSICS_T, H * 2, opts);
+    // 우측 벽: 좌측면이 x = BOX_RIGHT 에 정확히 위치하도록 중심 설정
+    const wallR = Bodies.rectangle(BOX_RIGHT + WALL_PHYSICS_T / 2, H / 2, WALL_PHYSICS_T, H * 2, opts);
     World.add(world, [floor, wallL, wallR]);
 
     Events.on(engine, 'collisionStart', onCollision);
@@ -452,15 +460,12 @@
         mergeReserved.add(idA);
         mergeReserved.add(idB);
 
-        // 이전 합성 보이스 정리하여 꿀꺽 소리 보장
         soundManager.stopVoicesOnly();
 
-        // 두 객체 중 하나를 eater로 지정 (더 왼쪽에 있거나 위쪽에 있는 쪽을 eater로)
         const isA_Eater = itA.body.position.y <= itB.body.position.y;
         const eaterItem = isA_Eater ? itA : itB;
         const victimItem = isA_Eater ? itB : itA;
 
-        // 먹기 연출 데이터 생성
         eatingAnimations.push({
           id: `${idA}_${idB}`,
           char: charData(MAX_LEVEL),
@@ -484,7 +489,6 @@
           text: '',
         });
 
-        // 물리 객체 즉시 제거 (충돌/합성/위험선 제외)
         World.remove(world, itA.body);
         World.remove(world, itB.body);
         items.delete(idA);
@@ -516,7 +520,7 @@
       Body.setVelocity(newBody, { x: vx, y: vy });
       Body.setAngularVelocity(newBody, 0);
 
-      // 음성 재생 (새로 생성된 캐릭터 음성)
+      // 새 캐릭터 음성 재생
       soundManager.playLevelVoice(newLevel);
 
       score += MERGE_SCORES[newLevel] || 0;
@@ -537,9 +541,8 @@
       const char = anim.char;
       const r = char.radius;
 
-      // 1. 입 위치 계산 (eater 기준)
+      // 1. 입 위치 계산 (eater 기준 회전 적용)
       const mRel = char.mouthPos || { x: 0, y: 0.15 };
-      // eater 회전 반영
       const cosA = Math.cos(anim.eater.angle);
       const sinA = Math.sin(anim.eater.angle);
       const mouthOffsetX = (mRel.x * cosA - mRel.y * sinA) * r;
@@ -591,7 +594,6 @@
       const char = anim.char;
       const r = char.radius;
 
-      // ─── eater 상태 계산 ───
       let eaterScale = 1.0;
       let eaterAngle = anim.eater.angle;
       let eaterStretchX = 1.0;
@@ -606,7 +608,6 @@
         eaterScale = 1.1;
         eaterAngle -= 0.12;
       } else {
-        // 0.5~0.9초 우물우물 2회 및 소멸
         const p = (t - 0.5) / 0.4;
         const wobble = Math.sin(p * Math.PI * 4);
         eaterStretchX = 1.0 + 0.12 * wobble;
@@ -620,7 +621,7 @@
         }
       }
 
-      // ─── victim 렌더링 (입 뒤로 들어가게 먼저 그리기) ───
+      // victim 렌더링 (입 뒤로 들어가게 먼저 그리기)
       if (t < 0.5) {
         let victimScale = 1.0;
         if (t >= 0.15) {
@@ -642,17 +643,16 @@
         }
       }
 
-      // ─── eater 렌더링 ───
+      // eater 렌더링
       ctx.save();
       ctx.translate(anim.eater.x, anim.eater.y);
       ctx.rotate(eaterAngle);
       ctx.scale(eaterStretchX * eaterScale, eaterStretchY * eaterScale);
       ctx.globalAlpha = eaterAlpha;
 
-      // 배지 본체
       drawCharacterBadge(ctx, char, 0, 0, r, 0, false, 1.0, 1.0);
 
-      // 입 벌림 표현 (검은 타원)
+      // 입 벌림 표현
       if (t <= 0.5) {
         const mRel = char.mouthPos || { x: 0, y: 0.15 };
         const mx = mRel.x * r;
@@ -668,7 +668,7 @@
       }
       ctx.restore();
 
-      // ─── 대사 텍스트 ("와앙!", "꿀꺽!") ───
+      // 대사 텍스트
       if (anim.text && eaterAlpha > 0.1) {
         ctx.save();
         ctx.fillStyle = '#e03050';
@@ -683,7 +683,7 @@
     });
   }
 
-  // ─── 점수 팝업 텍스트 (+5,120) ───────────────────────────
+  // ─── 점수 팝업 텍스트 ────────────────────────────────────
   function updateAndDrawFloatingTexts(dtSec) {
     for (let i = floatingTexts.length - 1; i >= 0; i--) {
       const ft = floatingTexts[i];
@@ -824,10 +824,10 @@
     // 점수 팝업 렌더링
     updateAndDrawFloatingTexts(dtSec);
 
-    // 좌우 벽 시각 표시
+    // 좌우 벽 시각 표시 (BOX_LEFT, BOX_RIGHT 경계와 정확히 일치)
     ctx.fillStyle = '#e8d2c0';
-    ctx.fillRect(0, DROP_ZONE_H, WALL_T / 2, H - DROP_ZONE_H);
-    ctx.fillRect(W - WALL_T / 2, DROP_ZONE_H, WALL_T / 2, H - DROP_ZONE_H);
+    ctx.fillRect(0, DROP_ZONE_H, BOX_LEFT, H - DROP_ZONE_H);
+    ctx.fillRect(BOX_RIGHT, DROP_ZONE_H, W - BOX_RIGHT, H - DROP_ZONE_H);
   }
 
   function loop(timestamp) {
@@ -845,7 +845,6 @@
     const dtSec = dt / 1000;
 
     if (gameState === 'playing') {
-      // 먹기 연출 중이면 물리·낙하·위험 판정 일시정지
       if (eatingAnimations.length > 0) {
         updateEatingAnimations(dtSec);
       } else {
@@ -892,13 +891,13 @@
 
     gameState = 'playing';
 
-    // 게임 시작 시 치이카와 음성 1회 재생
-    soundManager.playAudio('assets/audio/chiikawa.mp3', true);
+    // 게임 시작 시 1단계 우사기 음성 1회 재생
+    soundManager.playAudio('assets/audio/usagi.mp3', true);
   }
 
   // ─── 화면 반응형 스케일 ──────────────────────────────────
   function scaleWrapper() {
-    const fullHeight = wrapper.offsetHeight || 800;
+    const fullHeight = wrapper.offsetHeight || 880;
     const scaleX = (window.innerWidth - 12) / W;
     const scaleY = (window.innerHeight - 12) / fullHeight;
     const scale = Math.min(scaleX, scaleY, 1);
@@ -907,7 +906,7 @@
     wrapper.style.marginTop = `${offsetY}px`;
   }
 
-  // ─── 포인터 입력 (실제 Canvas 렌더링 크기 기준 변환) ─────
+  // ─── 포인터 입력 (실제 Canvas 렌더링 크기 기준 논리 좌표 변환) ──
   function toCanvasCoords(e) {
     const rect = canvas.getBoundingClientRect();
     return {
